@@ -1,6 +1,7 @@
 data/
 # MCP Server configuration
 .env
+!.env.example
 config.yaml
 *.log
 
