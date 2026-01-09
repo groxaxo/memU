@@ -77,6 +77,58 @@ All modalities are unified into the same three-layer hierarchy, enabling cross-m
 
 ---
 
+## 🔌 MCP Server Mode (NEW)
+
+MemU can now run as a **Model Context Protocol (MCP) server**, making it compatible with MCP clients like Claude Desktop, Cursor, and other AI agents. This enables your AI assistants to access persistent, intelligent memory.
+
+### Quick Start with MCP
+
+**Automated Installation:**
+
+```bash
+# Linux / macOS
+./install.sh
+
+# Windows
+setup.bat
+```
+
+The installer will guide you through:
+1. Docker installation check
+2. Provider selection (Ollama, OpenRouter, OpenAI, etc.)
+3. Configuration setup
+4. Docker image build
+5. Container launch
+
+**Supported Providers (OpenAI-Compatible):**
+- **Local**: Ollama, LMStudio
+- **Cloud**: OpenRouter, DeepInfra, Fireworks AI, OpenAI
+- **Custom**: Any OpenAI-compatible endpoint
+
+### Using with Claude Desktop
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "memu": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "--env-file", "/path/to/.memu/.env",
+        "-v", "/path/to/.memu/data:/data",
+        "memu-mcp-server"
+      ]
+    }
+  }
+}
+```
+
+**📚 Full MCP Documentation**: See [MCP_README.md](MCP_README.md) for detailed setup, configuration, and usage.
+
+---
+
 ## 🚀 Quick Start
 
 ### Option 1: Cloud Version
@@ -104,7 +156,22 @@ For enterprise deployment and custom solutions, contact **info@nevamind.ai**
 
 ---
 
-### Option 2: Self-Hosted
+### Option 2: MCP Server Mode (AI Agent Integration)
+
+Run MemU as an MCP server to integrate with Claude Desktop, Cursor, and other AI agents:
+
+```bash
+# Quick install with automated script
+./install.sh  # Linux/macOS
+# or
+setup.bat     # Windows
+```
+
+**📚 See [MCP_README.md](MCP_README.md)** for full setup and configuration details.
+
+---
+
+### Option 3: Self-Hosted Python Library
 
 #### Installation
 

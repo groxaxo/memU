@@ -1,4 +1,10 @@
 data/
+# MCP Server configuration
+.env
+!.env.example
+config.yaml
+*.log
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
