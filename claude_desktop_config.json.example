@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "memu": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "--env-file",
+        "/Users/youruser/.memu/.env",
+        "-v",
+        "/Users/youruser/.memu/data:/data",
+        "memu-mcp-server"
+      ]
+    }
+  }
+}
