@@ -21,7 +21,7 @@ try:
     from mcp.server.stdio import stdio_server
     from mcp.types import Resource, TextContent, Tool
 except ImportError:
-    print("Error: fastmcp not installed. Please run: pip install mcp", file=sys.stderr)
+    print("Error: mcp package not installed. Please run: pip install mcp", file=sys.stderr)
     sys.exit(1)
 
 from memu.app import MemoryService
