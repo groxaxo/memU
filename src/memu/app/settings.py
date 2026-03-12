@@ -120,6 +120,30 @@ class BlobConfig(BaseModel):
     resources_dir: str = Field(default="./data/resources")
 
 
+class RerankerConfig(BaseModel):
+    """Configuration for a cross-encoder reranker (e.g. vLLM-served Qwen3-Reranker).
+
+    When ``enabled`` is ``True``, the RAG pipeline will call the configured
+    rerank endpoint after the initial vector search to refine result ordering.
+    """
+
+    enabled: bool = Field(default=False, description="Whether to enable reranking after vector search.")
+    base_url: str = Field(
+        default="http://localhost:8002/v1",
+        description="Base URL of the reranker service (e.g. vLLM reranker endpoint).",
+    )
+    api_key: str = Field(default="EMPTY", description="API key for the reranker service.")
+    model: str = Field(
+        default="Qwen/Qwen3-Reranker-0.6B",
+        description="Reranker model name served by the endpoint.",
+    )
+    top_n: int | None = Field(
+        default=None,
+        description="Maximum number of reranked results to keep. None keeps all results ordered by score.",
+    )
+    timeout: int = Field(default=60, description="HTTP timeout in seconds for reranker requests.")
+
+
 class RetrieveCategoryConfig(BaseModel):
     enabled: bool = Field(default=True, description="Whether to enable category retrieval.")
     top_k: int = Field(default=5, description="Total number of categories to retrieve.")
@@ -162,6 +186,10 @@ class RetrieveConfig(BaseModel):
     sufficiency_check_prompt: str = Field(default="", description="User prompt for sufficiency check.")
     sufficiency_check_llm_profile: str = Field(default="default", description="LLM profile for sufficiency check.")
     llm_ranking_llm_profile: str = Field(default="default", description="LLM profile for LLM ranking.")
+    reranker: RerankerConfig = Field(
+        default_factory=RerankerConfig,
+        description="Optional cross-encoder reranker applied after vector search (RAG method only).",
+    )
 
 
 class MemorizeConfig(BaseModel):

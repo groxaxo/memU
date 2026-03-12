@@ -30,6 +30,7 @@ from memu.llm.wrapper import (
     LLMInterceptorHandle,
     LLMInterceptorRegistry,
 )
+from memu.reranker.http_client import RerankerHTTPClient
 from memu.workflow.pipeline import PipelineManager
 from memu.workflow.runner import WorkflowRunner, resolve_workflow_runner
 from memu.workflow.step import WorkflowState, WorkflowStep
@@ -83,6 +84,19 @@ class MemoryService(MemorizeMixin, RetrieveMixin, CRUDMixin):
         # Initialize client caches (lazy creation on first use)
         self._llm_clients: dict[str, Any] = {}
         self._llm_interceptors = LLMInterceptorRegistry()
+
+        # Initialize reranker client if enabled
+        reranker_cfg = self.retrieve_config.reranker
+        self._reranker_client: RerankerHTTPClient | None = (
+            RerankerHTTPClient(
+                base_url=reranker_cfg.base_url,
+                api_key=reranker_cfg.api_key,
+                model=reranker_cfg.model,
+                timeout=reranker_cfg.timeout,
+            )
+            if reranker_cfg.enabled
+            else None
+        )
 
         self._workflow_runner = resolve_workflow_runner(workflow_runner)
 
@@ -209,6 +223,10 @@ class MemoryService(MemorizeMixin, RetrieveMixin, CRUDMixin):
     def _get_step_embedding_client(self, step_context: Mapping[str, Any] | None) -> Any:
         profile = self._llm_profile_from_context(step_context, task="embedding") or "embedding"
         return self._get_llm_client(profile, step_context=step_context)
+
+    def _get_reranker_client(self) -> RerankerHTTPClient | None:
+        """Return the reranker client if reranking is enabled, otherwise ``None``."""
+        return self._reranker_client
 
     def intercept_before_llm_call(
         self,
