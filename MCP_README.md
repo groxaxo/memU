@@ -21,6 +21,7 @@ MemU works with **any OpenAI-compatible endpoint**. Here are some tested provide
 
 | Provider | Type | Base URL |
 |----------|------|----------|
+| **vLLM** | Self-hosted | `http://localhost:8000/v1` (Qwen AWQ + Embedding + Reranker) |
 | **Ollama** | Local | `http://localhost:11434/v1` |
 | **LMStudio** | Local | `http://localhost:1234/v1` |
 | **OpenRouter** | Cloud | `https://openrouter.ai/api/v1` |
@@ -126,7 +127,7 @@ The server supports configuration via environment variables or a `config.yaml` f
 
 ```bash
 # Provider Selection
-MEMU_PROVIDER=ollama  # ollama | lmstudio | openrouter | deepinfra | fireworks | openai
+MEMU_PROVIDER=ollama  # vllm | ollama | lmstudio | openrouter | deepinfra | fireworks | openai
 
 # LLM Configuration
 LLM_BASE_URL=http://localhost:11434/v1
@@ -143,6 +144,30 @@ RETRIEVE_METHOD=rag  # or llm
 ```
 
 #### Provider-Specific Examples
+
+**vLLM — Fully self-hosted with quantized Qwen models (best quality, no API key required)**
+
+Requires three running vLLM instances (chat, embedding, reranker):
+```bash
+# Launch (one terminal per model):
+vllm serve Qwen/Qwen2.5-14B-Instruct-AWQ --port 8000 --quantization awq --max-model-len 32768
+vllm serve Qwen/Qwen3-Embedding           --port 8001 --task embed  --max-model-len 8192
+vllm serve Qwen/Qwen3-Reranker            --port 8002 --task score  --max-model-len 8192
+```
+
+```bash
+MEMU_PROVIDER=vllm
+# Chat model (port 8000)
+VLLM_BASE_URL=http://host.docker.internal:8000/v1
+VLLM_CHAT_MODEL=Qwen/Qwen2.5-14B-Instruct-AWQ
+# Embedding model (port 8001)
+VLLM_EMBED_BASE_URL=http://host.docker.internal:8001/v1
+VLLM_EMBED_MODEL=Qwen/Qwen3-Embedding
+# Reranker model (port 8002)
+VLLM_RERANKER_BASE_URL=http://host.docker.internal:8002/v1
+VLLM_RERANKER_MODEL=Qwen/Qwen3-Reranker
+VLLM_RERANKER_ENABLED=true
+```
 
 **Ollama (Local)**
 ```bash
@@ -170,7 +195,7 @@ LLM_EMBED_MODEL=text-embedding-3-small
 
 ### YAML Configuration (Advanced)
 
-For more complex setups, use `config.yaml`:
+For more complex setups, use `config.yaml` (supports both YAML and JSON):
 
 ```yaml
 provider: "ollama"
@@ -195,6 +220,13 @@ database_config:
 
 retrieve_config:
   method: "rag"
+  # Optional: Enable cross-encoder reranking (vLLM or any Cohere-compatible endpoint)
+  # reranker:
+  #   enabled: true
+  #   base_url: "http://localhost:8002/v1"
+  #   api_key: "EMPTY"
+  #   model: "Qwen/Qwen3-Reranker"
+  #   top_n: 5
 ```
 
 Set the config path:
