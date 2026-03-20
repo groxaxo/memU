@@ -24,9 +24,28 @@ except ImportError:
     print("Error: mcp package not installed. Please run: pip install mcp", file=sys.stderr)
     sys.exit(1)
 
+try:
+    import yaml as _yaml
+except ImportError:  # pragma: no cover
+    _yaml = None  # type: ignore[assignment]
+
 from memu.app import MemoryService
 
 logger = logging.getLogger(__name__)
+
+
+def _load_config_file(config_path: str) -> dict[str, Any]:
+    """Load a configuration file in JSON or YAML format."""
+    path = Path(config_path)
+    with path.open() as f:
+        if path.suffix.lower() in {".yaml", ".yml"}:
+            if _yaml is None:
+                raise ImportError(
+                    "PyYAML is required to load YAML config files. "
+                    "Install it with: pip install pyyaml"
+                )
+            return _yaml.safe_load(f) or {}
+        return json.load(f)
 
 
 class MemUMCPServer:
@@ -44,22 +63,22 @@ class MemUMCPServer:
         self._register_prompts()
 
     def _load_config(self, config_path: str | None) -> dict[str, Any]:
-        """Load configuration from file or environment."""
+        """Load configuration from file or environment.
+
+        Precedence (highest to lowest):
+        1. Config file (YAML or JSON) — if provided via ``config_path``
+        2. Environment variables per provider
+        3. Built-in defaults
+        """
+        provider = os.getenv("MEMU_PROVIDER", "openai")
+
+        # Step 1: Build env-var/default configuration
         config: dict[str, Any] = {
-            "provider": os.getenv("MEMU_PROVIDER", "openai"),
+            "provider": provider,
             "llm_profiles": {},
             "database_config": {},
             "retrieve_config": {},
         }
-
-        # Load from config file if provided
-        if config_path and Path(config_path).exists():
-            with open(config_path) as f:
-                file_config = json.load(f)
-                config.update(file_config)
-
-        # Build llm_profiles from environment or config
-        provider = config.get("provider", "openai")
 
         if provider == "ollama":
             base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
@@ -109,6 +128,37 @@ class MemUMCPServer:
                     "client_backend": "sdk",
                 }
             }
+        elif provider == "vllm":
+            # Fully self-hosted vLLM with quantized Qwen models.
+            # Expects three separate vLLM instances (or one multi-model server):
+            #   - Chat  : VLLM_BASE_URL           (default port 8000)
+            #   - Embed : VLLM_EMBED_BASE_URL      (default port 8001)
+            #   - Rerank: VLLM_RERANKER_BASE_URL   (default port 8002)
+            vllm_api_key = os.getenv("VLLM_API_KEY", "EMPTY")
+            config["llm_profiles"] = {
+                "default": {
+                    "base_url": os.getenv("VLLM_BASE_URL", "http://localhost:8000/v1"),
+                    "api_key": vllm_api_key,
+                    "chat_model": os.getenv("VLLM_CHAT_MODEL", "Qwen/Qwen2.5-14B-Instruct-AWQ"),
+                    "client_backend": "sdk",
+                },
+                "embedding": {
+                    "base_url": os.getenv("VLLM_EMBED_BASE_URL", "http://localhost:8001/v1"),
+                    "api_key": os.getenv("VLLM_EMBED_API_KEY", vllm_api_key),
+                    "embed_model": os.getenv("VLLM_EMBED_MODEL", "Qwen/Qwen3-Embedding"),
+                    "chat_model": os.getenv("VLLM_EMBED_MODEL", "Qwen/Qwen3-Embedding"),
+                    "client_backend": "sdk",
+                },
+            }
+            config["retrieve_config"] = {
+                "method": os.getenv("RETRIEVE_METHOD", "rag"),
+                "reranker": {
+                    "enabled": os.getenv("VLLM_RERANKER_ENABLED", "true").lower() in {"1", "true", "yes"},
+                    "base_url": os.getenv("VLLM_RERANKER_BASE_URL", "http://localhost:8002/v1"),
+                    "api_key": os.getenv("VLLM_RERANKER_API_KEY", vllm_api_key),
+                    "model": os.getenv("VLLM_RERANKER_MODEL", "Qwen/Qwen3-Reranker"),
+                },
+            }
         else:  # default to openai or custom
             config["llm_profiles"] = {
                 "default": {
@@ -120,18 +170,22 @@ class MemUMCPServer:
                 }
             }
 
-        # Database configuration
+        # Database and retrieve defaults from env vars
         config["database_config"] = {
             "metadata_store": {
                 "provider": os.getenv("DB_PROVIDER", "inmemory"),
                 "dsn": os.getenv("DB_DSN"),
             }
         }
+        if not config.get("retrieve_config"):
+            config["retrieve_config"] = {
+                "method": os.getenv("RETRIEVE_METHOD", "rag"),
+            }
 
-        # Retrieve configuration
-        config["retrieve_config"] = {
-            "method": os.getenv("RETRIEVE_METHOD", "rag"),
-        }
+        # Step 2: Apply config file on top so that explicit file settings take precedence
+        if config_path and Path(config_path).exists():
+            file_config = _load_config_file(config_path)
+            config.update(file_config)
 
         return config
 

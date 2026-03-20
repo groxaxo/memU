@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from memu.app.service import Context
     from memu.app.settings import RetrieveConfig
     from memu.database.interfaces import Database
+    from memu.reranker.http_client import RerankerHTTPClient
 
 
 class RetrieveMixin:
@@ -34,6 +35,7 @@ class RetrieveMixin:
         _get_step_llm_client: Callable[[Mapping[str, Any] | None], Any]
         _get_step_embedding_client: Callable[[Mapping[str, Any] | None], Any]
         _get_llm_client: Callable[..., Any]
+        _get_reranker_client: Callable[[], "RerankerHTTPClient | None"]
         _model_dump_without_embeddings: Callable[[BaseModel], dict[str, Any]]
         _extract_json_blob: Callable[[str], str]
         _escape_prompt_value: Callable[[str], str]
@@ -160,6 +162,14 @@ class RetrieveMixin:
                 produces={"item_hits", "query_vector"},
                 capabilities={"vector"},
                 config={"embed_llm_profile": "embedding"},
+            ),
+            WorkflowStep(
+                step_id="rerank_items",
+                role="rerank_items",
+                handler=self._rag_rerank_items,
+                requires={"needs_retrieval", "proceed_to_items", "active_query", "item_hits", "store", "where"},
+                produces={"item_hits"},
+                capabilities=set(),
             ),
             WorkflowStep(
                 step_id="sufficiency_after_items",
@@ -340,6 +350,59 @@ class RetrieveMixin:
             where=where_filters,
         )
         state["item_pool"] = items_pool
+        return state
+
+    async def _rag_rerank_items(self, state: WorkflowState, _: Any) -> WorkflowState:
+        """Rerank item hits using a cross-encoder reranker (e.g. Qwen3-Reranker via vLLM).
+
+        This step is a no-op when:
+        - Reranking is disabled in the config.
+        - There are no item hits to rerank.
+        - Retrieval was not required.
+        """
+        reranker = self._get_reranker_client()
+        hits: list[tuple[str, float]] = state.get("item_hits") or []
+        if reranker is None or not hits or not state.get("needs_retrieval") or not state.get("proceed_to_items"):
+            return state
+
+        store = state["store"]
+        where_filters = state.get("where") or {}
+        item_pool = state.get("item_pool")
+        if item_pool is None:
+            # item_pool is always populated by recall_items when proceed_to_items is True;
+            # this fallback should not occur in normal operation.
+            logger.warning("item_pool missing from state during reranking; fetching from store")
+            item_pool = store.memory_item_repo.list_items(where_filters)
+        query = state.get("active_query", "")
+
+        # Build the list of documents from item summaries (same order as hits)
+        documents: list[str] = []
+        valid_hits: list[tuple[str, float]] = []
+        for item_id, score in hits:
+            item = item_pool.get(item_id)
+            if item is None:
+                continue
+            documents.append(item.summary)
+            valid_hits.append((item_id, score))
+
+        if not documents:
+            return state
+
+        reranker_cfg = self.retrieve_config.reranker
+        try:
+            ranked = await reranker.rerank(query, documents, top_n=reranker_cfg.top_n)
+        except Exception:
+            logger.exception("Reranker call failed; falling back to original vector ranking")
+            return state
+
+        # Map reranker scores back onto the original hit ids
+        reranked_hits: list[tuple[str, float]] = []
+        for original_idx, reranker_score in ranked:
+            if original_idx < len(valid_hits):
+                item_id, _ = valid_hits[original_idx]
+                reranked_hits.append((item_id, reranker_score))
+
+        state["item_hits"] = reranked_hits
         return state
 
     async def _rag_item_sufficiency(self, state: WorkflowState, step_context: Any) -> WorkflowState:

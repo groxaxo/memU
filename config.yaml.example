@@ -1,7 +1,7 @@
 # MemU MCP Server Configuration Example
 # Copy this file to config.yaml and customize for your provider
 
-# Provider selection: ollama | openrouter | deepinfra | fireworks | lmstudio | openai | custom
+# Provider selection: ollama | openrouter | deepinfra | fireworks | lmstudio | openai | vllm | custom
 provider: "ollama"
 
 # LLM Profiles Configuration
@@ -58,6 +58,61 @@ llm_profiles:
   #   embed_model: "voyage-3.5-lite"
   #   client_backend: "sdk"
 
+# ============================================================================
+# vLLM Self-Hosted Configuration (fully local, best quality, quantized Qwen)
+# ============================================================================
+# Uncomment and set provider: "vllm" to use this configuration.
+#
+# This setup runs three separate vLLM instances on different ports:
+#   - Port 8000: Qwen2.5-14B-Instruct-AWQ  (chat / reasoning)
+#   - Port 8001: Qwen3-Embedding            (dense text embeddings)
+#   - Port 8002: Qwen3-Reranker             (cross-encoder reranking)
+#
+# Launch commands (one terminal per model):
+#
+#   # Chat model (AWQ 4-bit quantization)
+#   vllm serve Qwen/Qwen2.5-14B-Instruct-AWQ \
+#       --port 8000 --quantization awq --max-model-len 32768
+#
+#   # Embedding model
+#   vllm serve Qwen/Qwen3-Embedding \
+#       --port 8001 --task embed --max-model-len 8192
+#
+#   # Reranker model
+#   vllm serve Qwen/Qwen3-Reranker \
+#       --port 8002 --task score --max-model-len 8192
+#
+# For smaller GPU (e.g. 24 GB VRAM), use:
+#   Chat:    Qwen/Qwen2.5-7B-Instruct-AWQ
+#   Embed:   Qwen/Qwen3-Embedding-0.6B
+#   Rerank:  Qwen/Qwen3-Reranker-0.6B
+#
+# provider: "vllm"
+#
+# llm_profiles:
+#   default:
+#     base_url: "http://localhost:8000/v1"
+#     api_key: "EMPTY"
+#     chat_model: "Qwen/Qwen2.5-14B-Instruct-AWQ"
+#     client_backend: "sdk"
+#   embedding:
+#     base_url: "http://localhost:8001/v1"
+#     api_key: "EMPTY"
+#     embed_model: "Qwen/Qwen3-Embedding"
+#     chat_model: "Qwen/Qwen3-Embedding"
+#     client_backend: "sdk"
+#
+# retrieve_config:
+#   method: "rag"
+#   route_intention: true
+#   sufficiency_check: true
+#   reranker:
+#     enabled: true
+#     base_url: "http://localhost:8002/v1"
+#     api_key: "EMPTY"
+#     model: "Qwen/Qwen3-Reranker"
+#     top_n: 5
+
 # Database Configuration
 database_config:
   metadata_store:
@@ -69,6 +124,12 @@ retrieve_config:
   method: "rag"  # "rag" for fast vector search, "llm" for deep semantic understanding
   route_intention: true
   sufficiency_check: true
+  # reranker:
+  #   enabled: false
+  #   base_url: "http://localhost:8002/v1"
+  #   api_key: "EMPTY"
+  #   model: "Qwen/Qwen3-Reranker-0.6B"
+  #   top_n: 5
 
 # Memory Configuration (optional)
 # memorize_config:
